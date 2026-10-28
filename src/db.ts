@@ -1,4 +1,4 @@
-export type OrderStatus = "pending" | "shipped" | "delivered" | "cancelled";
+import type { OrderStatus } from "./store.ts";
 
 export interface Order {
   id: string;

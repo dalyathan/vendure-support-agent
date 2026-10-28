@@ -5,7 +5,9 @@
     "start": "tsx src/cli.ts",
     "eval": "tsx evals/run.ts",
     "typecheck": "tsc",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "vendure:setup-dev": "tsx scripts/vendure-dev-setup.ts",
+    "test:vendure": "tsx --test test/vendure.integration.test.ts"
   },
   "keywords": [],
   "author": "",

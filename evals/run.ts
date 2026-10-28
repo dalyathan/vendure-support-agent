@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { isDeepStrictEqual, parseArgs } from "node:util";
 import { MODEL, SupportAgent, type ToolCall } from "../src/agent.ts";
 import { createDb, type Db } from "../src/db.ts";
+import { MemoryStore } from "../src/memory-store.ts";
 import { SCENARIOS, type Scenario } from "./scenarios.ts";
 import { SimulatedUser, STOP, USER_MODEL } from "./user-sim.ts";
 
@@ -18,8 +19,9 @@ interface Trial {
 }
 
 async function runTrial(scenario: Scenario, trial: number): Promise<Trial> {
-  const db = createDb();
-  const agent = new SupportAgent(db);
+  const store = new MemoryStore();
+  const db = store.db;
+  const agent = new SupportAgent(store);
   const user = new SimulatedUser(scenario.instruction);
   const transcript: Trial["transcript"] = [];
   const failures: string[] = [];

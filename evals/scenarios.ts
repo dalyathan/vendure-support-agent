@@ -1,4 +1,4 @@
-import type { OrderStatus } from "../src/db.ts";
+import type { OrderStatus } from "../src/store.ts";
 
 export interface Scenario {
   id: string;

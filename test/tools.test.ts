@@ -1,38 +1,56 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createDb } from "../src/db.ts";
-import { cancelOrder, executeTool, getOrder, lookupCustomer, toolDefinitions } from "../src/tools.ts";
+import { MemoryStore } from "../src/memory-store.ts";
+import { StoreError, type StoreBackend } from "../src/store.ts";
+import { executeTool, toolDefinitions } from "../src/tools.ts";
 
-test("lookupCustomer returns only that customer's orders", () => {
-  const result = JSON.parse(lookupCustomer(createDb(), { email: "Bob@Example.com " }));
+test("lookupCustomer returns only that customer's orders", async () => {
+  const result = await new MemoryStore().lookupCustomer("Bob@Example.com ");
   assert.equal(result.name, "Bob Okafor");
-  assert.deepEqual(result.orders.map((o: { id: string }) => o.id), ["B2001", "B2002"]);
-  assert.match(lookupCustomer(createDb(), { email: "nobody@example.com" }), /^Error/);
+  assert.deepEqual(result.orders.map((o) => o.id), ["B2001", "B2002"]);
+  await assert.rejects(new MemoryStore().lookupCustomer("nobody@example.com"), StoreError);
 });
 
-test("getOrder normalizes the ID", () => {
-  assert.equal(JSON.parse(getOrder(createDb(), { order_id: "a1001" })).total, 84.5);
-  assert.match(getOrder(createDb(), { order_id: "Z9999" }), /^Error/);
+test("getOrder normalizes the ID", async () => {
+  assert.equal((await new MemoryStore().getOrder("a1001")).total, 84.5);
+  await assert.rejects(new MemoryStore().getOrder("Z9999"), StoreError);
 });
 
-test("cancelOrder changes status once and reports the refund", () => {
-  const db = createDb();
-  assert.equal(JSON.parse(cancelOrder(db, { order_id: "A1001" })).refund_amount, 84.5);
-  assert.equal(db.orders.A1001.status, "cancelled");
-  assert.match(cancelOrder(db, { order_id: "A1001" }), /already cancelled/);
+test("cancelOrder changes status once and reports the refund", async () => {
+  const store = new MemoryStore();
+  const result = await store.cancelOrder("A1001", "test");
+  assert.deepEqual(result, { orderId: "A1001", refundAmount: 84.5, currency: "USD", refundStatus: "initiated" });
+  assert.equal(store.db.orders.A1001.status, "cancelled");
+  await assert.rejects(store.cancelOrder("A1001", "test"), /already cancelled/);
 });
 
-test("createDb returns independent copies", () => {
-  const a = createDb();
-  cancelOrder(a, { order_id: "C3001" });
+test("createDb returns independent copies", async () => {
+  await new MemoryStore().cancelOrder("C3001", "test");
   assert.equal(createDb().orders.C3001.status, "pending");
 });
 
-test("executeTool validates input and flags errors", () => {
-  const db = createDb();
-  assert.equal(executeTool(db, "get_order", { order_id: "B2001" }).isError, false);
-  assert.equal(executeTool(db, "get_order", { id: "B2001" }).isError, true);
-  assert.equal(executeTool(db, "delete_everything", {}).isError, true);
+test("executeTool validates input and flags errors", async () => {
+  const store = new MemoryStore();
+  assert.equal((await executeTool(store, "get_order", { order_id: "B2001" })).isError, false);
+  assert.equal((await executeTool(store, "get_order", { id: "B2001" })).isError, true);
+  assert.equal((await executeTool(store, "delete_everything", {})).isError, true);
+});
+
+test("executeTool reports unexpected failures as system errors", async () => {
+  const broken: StoreBackend = {
+    lookupCustomer: async () => {
+      throw new Error("connection refused");
+    },
+    getOrder: async () => {
+      throw new StoreError("no order X");
+    },
+    cancelOrder: async () => {
+      throw new Error("refund failed");
+    },
+  };
+  assert.match((await executeTool(broken, "lookup_customer", { email: "a@b.c" })).output, /^Error: system error.*connection refused/);
+  assert.equal((await executeTool(broken, "get_order", { order_id: "X" })).output, "Error: no order X");
 });
 
 test("tool definitions are strict JSON Schemas", () => {
